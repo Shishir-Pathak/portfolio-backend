@@ -41,18 +41,16 @@ app.use(
 );
 
 // ── Request logger ─────────────────────────────────────────
-// Prints every request + response status so you can see exactly
-// what URL the frontend is hitting and what the server replies.
 app.use((req, res, next) => {
   const startedAt = Date.now();
   res.on("finish", () => {
     const ms = Date.now() - startedAt;
     const color =
       res.statusCode >= 500
-        ? "\x1b[31m" // red
+        ? "\x1b[31m"
         : res.statusCode >= 400
-          ? "\x1b[33m" // yellow
-          : "\x1b[32m"; // green
+          ? "\x1b[33m"
+          : "\x1b[32m";
     console.log(
       `${color}${res.statusCode}\x1b[0m ${req.method} ${req.originalUrl} - ${ms}ms`
     );
@@ -61,20 +59,23 @@ app.use((req, res, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// CORS — allow local dev + ANY *.vercel.app subdomain.
-//
-// Vercel generates a NEW preview URL for every deploy, so a
-// hardcoded list gets stale fast. This regex approach means you
-// never have to update this file again when Vercel changes URLs.
-// You can also add a custom domain via the FRONTEND_URL env var.
+// CORS — explicit allow-list + wildcards for Vercel / localhost
 // ─────────────────────────────────────────────────────────────
 const staticAllowed = [
+  // Local dev
   "http://localhost:5173",
   "http://localhost:3000",
-  "http://localhost:4173", // vite preview
+  "http://localhost:4173",
+  "http://127.0.0.1:5173",
+
+  // Production frontend (Vercel)
+  "https://loopin-rho.vercel.app",
+  "https://loopin-indol.vercel.app",
+  "https://loopin.vercel.app",
 ];
 
-// Optional: an extra origin passed via env (e.g. a custom domain)
+// Pull an extra origin from env (FRONTEND_URL) so you can add a
+// custom domain without touching this file.
 const envOrigin = process.env.FRONTEND_URL?.trim();
 if (envOrigin && !staticAllowed.includes(envOrigin)) {
   staticAllowed.push(envOrigin);
@@ -83,18 +84,23 @@ if (envOrigin && !staticAllowed.includes(envOrigin)) {
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (Postman, curl, mobile apps)
+      // No origin → non-browser client (curl, Postman, mobile app)
       if (!origin) return callback(null, true);
 
-      const isLocalhost = staticAllowed.includes(origin);
-      const isVercel = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin);
+      const cleanOrigin = origin.replace(/\/+$/, ""); // strip trailing slash
 
-      if (isLocalhost || isVercel) {
+      const isExplicit = staticAllowed.includes(cleanOrigin);
+      const isVercel = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(cleanOrigin);
+
+      if (isExplicit || isVercel) {
+        console.log(
+          `✅ CORS allowed: ${cleanOrigin}${isExplicit ? " (explicit)" : " (vercel wildcard)"}`
+        );
         return callback(null, true);
       }
 
-      console.log("❌ CORS blocked origin:", origin);
-      return callback(new Error(`CORS: origin ${origin} not allowed`));
+      console.log("❌ CORS blocked origin:", cleanOrigin);
+      return callback(new Error(`CORS: origin ${cleanOrigin} not allowed`));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -142,6 +148,10 @@ const startServer = async () => {
       console.log("");
       console.log("═══════════════════════════════════════════════");
       console.log(`  🚀 Server running at http://localhost:${PORT}`);
+      console.log("");
+      console.log("  🌐 CORS allow-list:");
+      staticAllowed.forEach((o) => console.log(`     ✔ ${o}`));
+      console.log("     ✔ (any *.vercel.app subdomain)");
       console.log("");
       console.log("  📍 Routes registered:");
       console.log("     GET    /");
